@@ -253,6 +253,7 @@ func (o *snapshotter) constructOverlayBDSpec(ctx context.Context, key string, wr
 		if err != nil {
 			return err
 		}
+		configJSON.RepoBlobURL = parentConfJSON.RepoBlobURL
 		configJSON.Lowers = parentConfJSON.Lowers
 	}
 

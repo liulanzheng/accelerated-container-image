@@ -347,7 +347,7 @@ func (o *snapshotter) Prepare(ctx context.Context, key, parent string, opts ...s
 
 	// if parent is not empty, try to attach and mount block device
 	_, writableBD := info.Labels[LabelSupportWritableOverlayBD]
-	if parent != "" {
+	if _, ok := info.Labels[labelKeyTargetSnapshotRef]; !ok && parent != "" {
 		parentID, parentInfo, _, err := storage.GetInfo(ctx, parent)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get info of parent snapshot %s", parent)
@@ -885,31 +885,21 @@ func (o *snapshotter) identifySnapshotStorageType(id string, info snapshots.Info
 
 	}
 
+	// check overlaybd.commit
 	filePath := o.magicFilePath(id)
-
-	f, err := os.Open(filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return storageTypeNormal, nil
-		}
-		return storageTypeUnknown, errors.Wrapf(err, "failed to open %s", filePath)
+	st, err := o.identifyLocalStorageType(filePath)
+	if err == nil {
+		return st, nil
 	}
 
-	const overlaybdHeaderSize = 32
-	data := make([]byte, overlaybdHeaderSize)
-
-	_, err = f.Read(data)
-	f.Close()
-	if err != nil {
-		return storageTypeUnknown, errors.Wrapf(err, "failed to read %s", filePath)
+	// check writable data file
+	filePath = o.tgtOverlayBDWritableDataPath(id)
+	st, err = o.identifyLocalStorageType(filePath)
+	if err != nil && os.IsNotExist(err) {
+		return storageTypeNormal, nil
 	}
-
-	if isZfileHeader(data) {
-		return storageTypeLocalBlock, nil
-	}
-	return storageTypeNormal, nil
+	return st, err
 }
-
 func (o *snapshotter) snPath(id string) string {
 	return filepath.Join(o.root, "snapshots", id)
 }
@@ -961,6 +951,27 @@ func (o *snapshotter) tgtOverlayBDWritableDataPath(id string) string {
 // Close closes the snapshotter
 func (o *snapshotter) Close() error {
 	return o.ms.Close()
+}
+
+func (o *snapshotter) identifyLocalStorageType(filePath string) (storageType, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return storageTypeUnknown, err
+	}
+
+	const overlaybdHeaderSize = 32
+	data := make([]byte, overlaybdHeaderSize)
+
+	_, err = f.Read(data)
+	f.Close()
+	if err != nil {
+		return storageTypeUnknown, errors.Wrapf(err, "failed to read %s", filePath)
+	}
+
+	if isZfileHeader(data) {
+		return storageTypeLocalBlock, nil
+	}
+	return storageTypeNormal, nil
 }
 
 func isZfileHeader(header []byte) bool {
