@@ -71,8 +71,13 @@ var convertCommand = cli.Command{
 	Flags: []cli.Flag{
 		cli.StringFlag{
 			Name:  "basepath",
-			Usage: "baselayer path(required), used to init block device",
-			Value: "/opt/overlaybd/baselayers/ext4_64",
+			Usage: "baselayer path, used to init block device",
+			Value: "/opt/overlaybd/baselayers/xfs_64",
+		},
+		cli.StringFlag{
+			Name:  "fs",
+			Usage: "filesystem params, used to mount filesystem",
+			Value: "xfs|nouuid",
 		},
 	},
 	Action: func(context *cli.Context) error {
@@ -115,7 +120,7 @@ var convertCommand = cli.Command{
 			return errors.Wrapf(err, "failed to read manifest")
 		}
 
-		baseLayer, err := loadCommittedSnapshotterInContent(ctx, cs, context.String("basepath"))
+		baseLayer, err := loadCommittedSnapshotterInContent(ctx, cs, context.String("basepath"), context.String("fs"))
 		if err != nil {
 			return errors.Wrap(err, "failed to load baselayer into content.Store")
 		}
@@ -244,7 +249,7 @@ func convOCIV1LayersToZfile(ctx context.Context, sn snapshots.Snapshotter, cs co
 		}
 
 		if len(f) != 1 || f[0].IsDir() {
-			return errors.Errorf("unexpected base layer tar[.gz]")
+			return errors.Errorf("unexpected base layer")
 		}
 		return os.Rename(filepath.Join(root, f[0].Name()), filepath.Join(root, "overlaybd.commit"))
 	})
@@ -269,7 +274,7 @@ func convOCIV1LayersToZfile(ctx context.Context, sn snapshots.Snapshotter, cs co
 		}
 
 		commitPath := info.Labels["containerd.io/snapshot/overlaybd.localcommitpath"]
-		return loadCommittedSnapshotterInContent(ctx, cs, commitPath)
+		return loadCommittedSnapshotterInContent(ctx, cs, commitPath, "xfs")
 	}
 
 	commitLayers[0], err = sendToContentStore(ctx, lastParentID)
@@ -380,7 +385,7 @@ func applyOCIV1LayerInZfile(
 }
 
 // loadCommittedSnapshotterInContent uploads the commit data in content.Store service.
-func loadCommittedSnapshotterInContent(ctx context.Context, cs content.Store, commitPath string) (layer, error) {
+func loadCommittedSnapshotterInContent(ctx context.Context, cs content.Store, commitPath string, fs string) (layer, error) {
 	labels := map[string]string{
 		"containerd.io/snapshot/overlaybd/build.layer-from": commitPath,
 	}
@@ -488,6 +493,7 @@ func loadCommittedSnapshotterInContent(ctx context.Context, cs content.Store, co
 	var (
 		annoOverlayBDBlobDigest = "containerd.io/snapshot/overlaybd/blob-digest"
 		annoOverlayBDBlobSize   = "containerd.io/snapshot/overlaybd/blob-size"
+		annoOverlayBDBlobFstype = "containerd.io/snapshot/overlaybd/blob-fs"
 	)
 
 	return layer{
@@ -498,6 +504,7 @@ func loadCommittedSnapshotterInContent(ctx context.Context, cs content.Store, co
 			Annotations: map[string]string{
 				annoOverlayBDBlobDigest: dig.String(),
 				annoOverlayBDBlobSize:   fmt.Sprintf("%v", size),
+				annoOverlayBDBlobFstype: fs,
 			},
 		},
 		diffID: uncompressedDigest,

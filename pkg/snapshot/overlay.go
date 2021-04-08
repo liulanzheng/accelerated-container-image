@@ -90,6 +90,8 @@ const (
 	//
 	// NOTE: The annotation is part of image layer blob's descriptor.
 	labelKeyOverlayBDBlobSize = "containerd.io/snapshot/overlaybd/blob-size"
+
+	labelKeyOverlayBDBlobFs = "containerd.io/snapshot/overlaybd/blob-fs"
 )
 
 // interface
@@ -360,7 +362,7 @@ func (o *snapshotter) Prepare(ctx context.Context, key, parent string, opts ...s
 				}
 			}
 
-			if err := o.attachAndMountBlockDevice(ctx, obdID, obdName, writableBD); err != nil {
+			if err := o.attachAndMountBlockDevice(ctx, obdID, obdName, writableBD, info.Labels[labelKeyOverlayBDBlobFs]); err != nil {
 				return nil, errors.Wrapf(err, "failed to attach and mount for snapshot %v", key)
 			}
 
@@ -443,7 +445,7 @@ func (o *snapshotter) View(ctx context.Context, key, parent string, opts ...snap
 		case storageTypeLocalBlock, storageTypeRemoteBlock:
 			obdID, obdName := parentID, parentInfo.Name
 
-			if err := o.attachAndMountBlockDevice(ctx, obdID, obdName, false); err != nil {
+			if err := o.attachAndMountBlockDevice(ctx, obdID, obdName, false, ""); err != nil {
 				return nil, errors.Wrapf(err, "failed to attach and mount for snapshot %v", key)
 			}
 		default:

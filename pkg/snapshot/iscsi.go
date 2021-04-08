@@ -112,7 +112,7 @@ func (o *snapshotter) unmountAndDetachBlockDevice(ctx context.Context, snID stri
 // attachAndMountBlockDevice
 //
 // TODO(fuweid): need to track the middle state if the process has been killed.
-func (o *snapshotter) attachAndMountBlockDevice(ctx context.Context, snID string, snKey string, writable bool) (retErr error) {
+func (o *snapshotter) attachAndMountBlockDevice(ctx context.Context, snID string, snKey string, writable bool, fsparam string) (retErr error) {
 	if err := lookup(o.overlaybdMountpoint(snID)); err == nil {
 		return nil
 	}
@@ -206,6 +206,16 @@ func (o *snapshotter) attachAndMountBlockDevice(ctx context.Context, snID string
 	deviceNumber := string(bytes)
 	deviceNumber = strings.TrimSuffix(deviceNumber, "\n")
 
+	params := strings.Split("fsparam", "|")
+	fstype := ""
+	fsopts := ""
+	if len(params) > 0 {
+		fstype = params[0]
+	}
+	if len(params) > 1 {
+		fsopts = params[1]
+	}
+
 	// The device doesn't show up instantly. Need retry here.
 	var lastErr error = nil
 	for retry := 0; retry < maxAttachAttempts; retry++ {
@@ -225,12 +235,22 @@ func (o *snapshotter) attachAndMountBlockDevice(ctx context.Context, snID string
 			device := fmt.Sprintf("/dev/%s", dev.Name())
 			var mountPoint = o.overlaybdMountpoint(snID)
 
+			if fstype == "" {
+				// fs not set, check fstype on the block
+				fstype, err = checkFstypeFromDevice(ctx, device)
+				if err != nil {
+					lastErr = errors.Wrapf(err, "failed to check fstype for %s", device)
+					time.Sleep(10 * time.Millisecond)
+					break
+				}
+			}
+
 			var mflag uintptr = unix.MS_RDONLY
 			if writable {
 				mflag = 0
 			}
 
-			if err := unix.Mount(device, mountPoint, "ext4", mflag, ""); err != nil {
+			if err := unix.Mount(device, mountPoint, fstype, mflag, fsopts); err != nil {
 				lastErr = errors.Wrapf(err, "failed to mount %s to %s", device, mountPoint)
 				time.Sleep(10 * time.Millisecond)
 				break
@@ -307,7 +327,7 @@ func (o *snapshotter) constructOverlayBDSpec(ctx context.Context, key string, wr
 			return errors.Errorf("unexpect storage %v of snapshot %v during construct overlaybd spec(writable=%v, parent=%s)", stype, key, writable, info.Parent)
 		}
 
-		if err := o.prepareWritableOverlaybd(ctx, id); err != nil {
+		if err := o.prepareWritableOverlaybd(ctx, id, info.Parent); err != nil {
 			return err
 		}
 
@@ -369,13 +389,13 @@ func (o *snapshotter) atomicWriteBackingStoreAndTargetConfig(ctx context.Context
 }
 
 // prepareWritableOverlaybd
-func (o *snapshotter) prepareWritableOverlaybd(ctx context.Context, snID string) error {
+func (o *snapshotter) prepareWritableOverlaybd(ctx context.Context, snID, parentSnID string) error {
 	binpath := filepath.Join(o.config.OverlayBDUtilBinDir, "overlaybd-create")
 
 	// TODO(fuweid): 256GB can be configurable?
 	out, err := exec.CommandContext(ctx, binpath,
 		o.overlaybdWritableDataPath(snID),
-		o.overlaybdWritableIndexPath(snID), "1").CombinedOutput()
+		o.overlaybdWritableIndexPath(snID), "64").CombinedOutput()
 	if err != nil {
 		return errors.Wrapf(err, "failed to prepare writable overlaybd: %s", out)
 	}
@@ -404,6 +424,21 @@ func (o *snapshotter) commitWritableOverlaybd(ctx context.Context, snID string) 
 		return errors.Wrapf(err, "failed to create zfile: %s", out)
 	}
 	return nil
+}
+
+// checkFstypeFromDevice return the filesystem type for /dev/xyz.
+//
+// TODO(fuweid): It will be good to read /dev/xyz to parse the filesystem.
+func checkFstypeFromDevice(ctx context.Context, device string) (string, error) {
+	fstype, err := exec.CommandContext(ctx, "lsblk",
+		"-f",
+		"-o", "FSTYPE", // only show the filesystem
+		"-n", // no table heading
+		device).CombinedOutput()
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to get filesystem type for %v: %v", device, string(fstype))
+	}
+	return strings.TrimSpace(string(fstype)), nil
 }
 
 // TODO: use device number to check?
