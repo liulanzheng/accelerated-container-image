@@ -15,13 +15,9 @@ This doc includes:
 
 ### Overlaybd
 
-Check the overlaybd backing-store of tgt.
+Check the `overlaybd-tcmu` is running correctly.
 
-```bash
-sudo tgtadm --lld iscsi --mode system --op show | grep -B 5 overlaybd
-```
-
-If there is no overlaybd backing-store, please checkout [overlaybd](https://github.com/alibaba/overlaybd).
+Please checkout [overlaybd](https://github.com/alibaba/overlaybd) for any problems.
 
 ### Proxy overlaybd snapshotter
 
@@ -91,7 +87,7 @@ We could see a new iSCSI device (sdb) has been created, and its mount-point is t
 
 ## Convert OCI Image into overlaybd
 
-Overlaybd image convertor helps to convert a normal image to overlaybd-format remote image.
+Overlaybd image convertor helps to convert a normal image to overlaybd format remote image.
 
 ```bash
 # pull the source image
