@@ -1,0 +1,12 @@
+[Unit]
+Description=overlaybd-snapshotter service
+DefaultDependencies=no
+
+[Service]
+LimitNOFILE=1000000
+LimitCORE=infinity
+
+ExecStart=/opt/overlaybd/bin/overlaybd-overlaybd
+
+[Install]
+WantedBy=multi-user.target
