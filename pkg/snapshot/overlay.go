@@ -691,21 +691,24 @@ func (o *snapshotter) Commit(ctx context.Context, name, key string, opts ...snap
 		return errors.Wrapf(err, "failed to get info of snapshot %s", key)
 	}
 
+	log.G(ctx).Debugf("Commit oinfo (id: %s, info: %v)", id, oinfo.Labels)
 	// if writable, should commit the data and make it immutable.
-	if _, writableBD := oinfo.Labels[label.SupportReadWriteMode]; writableBD {
-		// TODO(fuweid): how to rollback?
-		if oinfo.Labels[label.AccelerationLayer] == "yes" {
-			log.G(ctx).Info("Commit accel-layer requires no writable_data")
-		} else {
-			if err := o.unmountAndDetachBlockDevice(ctx, id, key); err != nil {
-				return errors.Wrapf(err, "failed to destroy target device for snapshot %s", key)
-			}
+	if _, err := o.loadBackingStoreConfig(id); err == nil {
+		if _, writableBD := oinfo.Labels[label.SupportReadWriteMode]; writableBD {
+			// TODO(fuweid): how to rollback?
+			if oinfo.Labels[label.AccelerationLayer] == "yes" {
+				log.G(ctx).Info("Commit accel-layer requires no writable_data")
+			} else {
+				if err := o.unmountAndDetachBlockDevice(ctx, id, key); err != nil {
+					return errors.Wrapf(err, "failed to destroy target device for snapshot %s", key)
+				}
 
-			if err := o.sealWritableOverlaybd(ctx, id); err != nil {
-				return err
-			}
+				if err := o.sealWritableOverlaybd(ctx, id); err != nil {
+					return err
+				}
 
-			opts = append(opts, snapshots.WithLabels(map[string]string{label.LocalOverlayBDPath: o.overlaybdSealedFilePath(id)}))
+				opts = append(opts, snapshots.WithLabels(map[string]string{label.LocalOverlayBDPath: o.overlaybdSealedFilePath(id)}))
+			}
 		}
 	}
 
@@ -731,7 +734,8 @@ func (o *snapshotter) Commit(ctx context.Context, name, key string, opts ...snap
 		}
 
 		info.Labels[label.LocalOverlayBDPath] = o.overlaybdSealedFilePath(id)
-		info, err = storage.UpdateInfo(ctx, info, fmt.Sprintf("labels.%s", label.LocalOverlayBDPath))
+		delete(info.Labels, label.SupportReadWriteMode)
+		info, err = storage.UpdateInfo(ctx, info)
 		if err != nil {
 			return err
 		}
