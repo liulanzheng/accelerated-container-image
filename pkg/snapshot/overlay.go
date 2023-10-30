@@ -282,7 +282,8 @@ func (o *snapshotter) Usage(ctx context.Context, key string) (_ snapshots.Usage,
 
 	if info.Kind == snapshots.KindActive {
 		upperPath := o.upperPath(id)
-		du, err := fs.DiskUsage(ctx, upperPath)
+		blkPath := o.blockPath(id)
+		du, err := fs.DiskUsage(ctx, upperPath, blkPath)
 		if err != nil {
 			return snapshots.Usage{}, err
 		}
@@ -568,7 +569,7 @@ func (o *snapshotter) createMountPoint(ctx context.Context, kind snapshots.Kind,
 
 // Prepare creates an active snapshot identified by key descending from the provided parent.
 func (o *snapshotter) Prepare(ctx context.Context, key, parent string, opts ...snapshots.Opt) (_ []mount.Mount, retErr error) {
-	log.G(ctx).Debugf("Prepare (key: %s, parent: %s)", key, parent)
+	log.G(ctx).Debugf("Prepare (key: %s, parent: %s, opts: %v)", key, parent, opts)
 	start := time.Now()
 	defer func() {
 		if retErr != nil {
@@ -581,7 +582,7 @@ func (o *snapshotter) Prepare(ctx context.Context, key, parent string, opts ...s
 
 // View returns a readonly view on parent snapshotter.
 func (o *snapshotter) View(ctx context.Context, key, parent string, opts ...snapshots.Opt) (_ []mount.Mount, retErr error) {
-	log.G(ctx).Debugf("View (key: %s, parent: %s)", key, parent)
+	log.G(ctx).Debugf("View (key: %s, parent: %s, opts: %v)", key, parent, opts)
 	defer log.G(ctx).Debugf("return View (key: %s, parent: %s)", key, parent)
 	start := time.Now()
 	defer func() {

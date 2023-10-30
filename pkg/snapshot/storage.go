@@ -651,7 +651,7 @@ func (o *snapshotter) atomicWriteOverlaybdTargetConfig(snID string, configJSON *
 // prepareWritableOverlaybd
 func (o *snapshotter) prepareWritableOverlaybd(ctx context.Context, snID string) error {
 	// TODO(fuweid): 256GB can be configurable?
-	args := []string{"64"}
+	args := []string{"256"}
 	if o.writableLayerType == "sparse" {
 		args = append(args, "-s")
 	}
