@@ -37,8 +37,10 @@ import (
 	"github.com/containerd/containerd/log"
 	"github.com/containerd/containerd/mount"
 	"github.com/containerd/containerd/reference"
+	"github.com/containerd/containerd/snapshots"
 	"github.com/containerd/containerd/snapshots/storage"
 	"github.com/containerd/continuity"
+	"github.com/containerd/continuity/fs"
 	"github.com/moby/sys/mountinfo"
 	specs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
@@ -700,4 +702,21 @@ func lookup(dir string) error {
 
 func isGzipLayerType(mediaType string) bool {
 	return mediaType == specs.MediaTypeImageLayerGzip || mediaType == images.MediaTypeDockerSchema2LayerGzip
+}
+
+func (o *snapshotter) diskUsageWithBlock(ctx context.Context, id string, stype storageType) (snapshots.Usage, error) {
+	usage := snapshots.Usage{}
+	du, err := fs.DiskUsage(ctx, o.upperPath(id))
+	if err != nil {
+		return snapshots.Usage{}, err
+	}
+	usage = snapshots.Usage(du)
+	if stype == storageTypeRemoteBlock || stype == storageTypeLocalBlock {
+		du, err := utils.DiskUsageWithoutMountpoint(ctx, o.blockPath(id))
+		if err != nil {
+			return snapshots.Usage{}, err
+		}
+		usage.Add(snapshots.Usage(du))
+	}
+	return usage, nil
 }
